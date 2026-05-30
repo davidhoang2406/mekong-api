@@ -1,0 +1,8 @@
+.env
+.env.*
+*.env
+mekong-api
+/tmp/
+*.test
+*.out
+vendor/

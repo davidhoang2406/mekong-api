@@ -6,3 +6,6 @@ mekong-api
 *.test
 *.out
 vendor/
+.idea/
+.vscode/
+*.iml

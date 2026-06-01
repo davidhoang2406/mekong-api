@@ -23,8 +23,10 @@ func InitDuckDB(cfg config.Config) (*sql.DB, error) {
 	db.SetMaxOpenConns(1)
 
 	setup := fmt.Sprintf(`
+		SET home_directory = '/tmp';
 		INSTALL httpfs;
 		LOAD httpfs;
+		SET s3_region = 'us-east-1';
 		SET s3_endpoint = '%s';
 		SET s3_access_key_id = '%s';
 		SET s3_secret_access_key = '%s';

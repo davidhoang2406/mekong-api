@@ -1,4 +1,4 @@
-package app
+package unit
 
 import (
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/davidhoang2406/mekong-api/internal/app"
 	"github.com/davidhoang2406/mekong-api/internal/config"
 	"github.com/davidhoang2406/mekong-api/internal/store"
 )
@@ -17,10 +18,8 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
-// newTestApp builds an App with nil DuckDB/PG — safe only for handler paths
-// that return before touching the stores (validation failures, cache hits).
-func newTestApp() *App {
-	return &App{
+func newTestApp() *app.App {
+	return &app.App{
 		Cache: store.NewCache(time.Minute),
 		Cfg: config.Config{
 			MinioAnalysisBucket: "test-bucket",
@@ -125,7 +124,7 @@ func TestGetSnapshot_MissingSymbol(t *testing.T) {
 }
 
 func TestGetSnapshot_NoWSURL(t *testing.T) {
-	r := newTestApp().SetupRouter() // WSInternalURL is empty
+	r := newTestApp().SetupRouter()
 	w := doRequest(r, http.MethodGet, "/api/v1/snapshot?symbol=VCB")
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", w.Code)
@@ -140,7 +139,6 @@ func TestGetSnapshot_NoWSURL(t *testing.T) {
 
 func TestGetSymbols_CacheHit(t *testing.T) {
 	a := newTestApp()
-	// Pre-populate cache — handler must return this without calling DuckDB.
 	a.Cache.Set("symbols:", gin.H{"symbols": []string{"VCB", "FPT"}})
 
 	r := a.SetupRouter()
@@ -154,7 +152,7 @@ func TestGetSymbols_CacheHit(t *testing.T) {
 
 func TestErrorEnvelope_HasRequiredFields(t *testing.T) {
 	r := newTestApp().SetupRouter()
-	w := doRequest(r, http.MethodGet, "/api/v1/ohlcv") // triggers 400
+	w := doRequest(r, http.MethodGet, "/api/v1/ohlcv")
 	body := decodeBody(t, w)
 	for _, field := range []string{"error", "code", "status"} {
 		if body[field] == nil {

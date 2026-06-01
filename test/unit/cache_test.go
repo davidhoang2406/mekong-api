@@ -1,13 +1,15 @@
-package store
+package unit
 
 import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/davidhoang2406/mekong-api/internal/store"
 )
 
 func TestCache_SetGet(t *testing.T) {
-	c := NewCache(time.Minute)
+	c := store.NewCache(time.Minute)
 	c.Set("k", "value")
 	v, ok := c.Get("k")
 	if !ok {
@@ -19,7 +21,7 @@ func TestCache_SetGet(t *testing.T) {
 }
 
 func TestCache_Miss(t *testing.T) {
-	c := NewCache(time.Minute)
+	c := store.NewCache(time.Minute)
 	_, ok := c.Get("missing")
 	if ok {
 		t.Fatal("expected miss")
@@ -27,7 +29,7 @@ func TestCache_Miss(t *testing.T) {
 }
 
 func TestCache_TTLExpiry(t *testing.T) {
-	c := NewCache(50 * time.Millisecond)
+	c := store.NewCache(50 * time.Millisecond)
 	c.Set("k", 42)
 	time.Sleep(100 * time.Millisecond)
 	_, ok := c.Get("k")
@@ -37,10 +39,10 @@ func TestCache_TTLExpiry(t *testing.T) {
 }
 
 func TestCache_OverwriteResetsTTL(t *testing.T) {
-	c := NewCache(200 * time.Millisecond)
+	c := store.NewCache(200 * time.Millisecond)
 	c.Set("k", 1)
 	time.Sleep(100 * time.Millisecond)
-	c.Set("k", 2) // reset TTL
+	c.Set("k", 2)
 	time.Sleep(150 * time.Millisecond)
 	v, ok := c.Get("k")
 	if !ok {
@@ -52,7 +54,7 @@ func TestCache_OverwriteResetsTTL(t *testing.T) {
 }
 
 func TestCache_DifferentKeys(t *testing.T) {
-	c := NewCache(time.Minute)
+	c := store.NewCache(time.Minute)
 	c.Set("a", 1)
 	c.Set("b", 2)
 	va, _ := c.Get("a")
@@ -63,7 +65,7 @@ func TestCache_DifferentKeys(t *testing.T) {
 }
 
 func TestCache_ConcurrentAccess(t *testing.T) {
-	c := NewCache(time.Minute)
+	c := store.NewCache(time.Minute)
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(2)

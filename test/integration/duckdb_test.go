@@ -1,6 +1,6 @@
 //go:build integration
 
-package store
+package integration
 
 import (
 	"database/sql"
@@ -9,10 +9,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/davidhoang2406/mekong-api/internal/config"
+	_ "github.com/marcboeker/go-duckdb"
+
+	"github.com/davidhoang2406/mekong-api/internal/store"
 )
 
-// TestMain creates local Parquet fixtures once for all integration tests.
 func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "mekong-test-*")
 	if err != nil {
@@ -20,7 +21,7 @@ func TestMain(m *testing.M) {
 	}
 	defer os.RemoveAll(dir)
 
-	ParquetBase = dir + "/"
+	store.ParquetBase = dir + "/"
 
 	if err := writeFixtures(dir); err != nil {
 		panic(fmt.Sprintf("write fixtures: %v", err))
@@ -29,7 +30,6 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// writeFixtures uses DuckDB to create Parquet test data with Hive partitioning.
 func writeFixtures(base string) error {
 	db, err := sql.Open("duckdb", "")
 	if err != nil {
@@ -43,21 +43,20 @@ func writeFixtures(base string) error {
 	if err := os.MkdirAll(ohlcvDir, 0755); err != nil {
 		return err
 	}
-	_, err = db.Exec(fmt.Sprintf(`
+	if _, err = db.Exec(fmt.Sprintf(`
 		COPY (
 			SELECT
 				'2026-05-20 00:00:00'::TIMESTAMPTZ AS time,
 				'VCB'   AS symbol,
 				'HOSE'  AS exchange,
 				'stock' AS asset_class,
-				85000.0 AS open,
-				86200.0 AS high,
-				84500.0 AS low,
-				85800.0 AS close,
-				2345678 AS volume
+				85000.0::DOUBLE AS open,
+				86200.0::DOUBLE AS high,
+				84500.0::DOUBLE AS low,
+				85800.0::DOUBLE AS close,
+				2345678::BIGINT AS volume
 		) TO '%s/data.parquet' (FORMAT parquet)
-	`, ohlcvDir))
-	if err != nil {
+	`, ohlcvDir)); err != nil {
 		return fmt.Errorf("ohlcv fixture: %w", err)
 	}
 
@@ -67,27 +66,26 @@ func writeFixtures(base string) error {
 	if err := os.MkdirAll(indDir, 0755); err != nil {
 		return err
 	}
-	_, err = db.Exec(fmt.Sprintf(`
+	if _, err = db.Exec(fmt.Sprintf(`
 		COPY (
 			SELECT
 				'2026-05-20 00:00:00'::TIMESTAMPTZ AS time,
 				'VCB'   AS symbol,
 				'stock' AS asset_class,
 				'HOSE'  AS exchange,
-				85800.0 AS close,
-				85100.0 AS sma20,
-				84200.0 AS sma50,
-				82500.0 AS sma200,
-				58.3    AS rsi14,
-				120.5   AS macd,
-				95.2    AS macd_signal,
-				25.3    AS macd_hist,
-				87200.0 AS bb_upper,
-				85100.0 AS bb_mid,
-				83000.0 AS bb_lower
+				85800.0::DOUBLE AS close,
+				85100.0::DOUBLE AS sma20,
+				84200.0::DOUBLE AS sma50,
+				82500.0::DOUBLE AS sma200,
+				58.3::DOUBLE    AS rsi14,
+				120.5::DOUBLE   AS macd,
+				95.2::DOUBLE    AS macd_signal,
+				25.3::DOUBLE    AS macd_hist,
+				87200.0::DOUBLE AS bb_upper,
+				85100.0::DOUBLE AS bb_mid,
+				83000.0::DOUBLE AS bb_lower
 		) TO '%s/data.parquet' (FORMAT parquet)
-	`, indDir))
-	if err != nil {
+	`, indDir)); err != nil {
 		return fmt.Errorf("indicators fixture: %w", err)
 	}
 
@@ -97,21 +95,20 @@ func writeFixtures(base string) error {
 	if err := os.MkdirAll(digestDir, 0755); err != nil {
 		return err
 	}
-	_, err = db.Exec(fmt.Sprintf(`
+	if _, err = db.Exec(fmt.Sprintf(`
 		COPY (
 			SELECT
-				'gainer' AS category,
-				1        AS rank,
-				'FPT'    AS symbol,
-				'HOSE'   AS exchange,
-				'stock'  AS asset_class,
-				120000.0 AS open,
-				128000.0 AS close,
-				5678901  AS volume,
-				6.67     AS pct_change
+				'gainer'  AS category,
+				1::INTEGER AS rank,
+				'FPT'     AS symbol,
+				'HOSE'    AS exchange,
+				'stock'   AS asset_class,
+				120000.0::DOUBLE AS open,
+				128000.0::DOUBLE AS close,
+				5678901::BIGINT  AS volume,
+				6.67::DOUBLE     AS pct_change
 		) TO '%s/data.parquet' (FORMAT parquet)
-	`, digestDir))
-	if err != nil {
+	`, digestDir)); err != nil {
 		return fmt.Errorf("digest fixture: %w", err)
 	}
 
@@ -121,47 +118,39 @@ func writeFixtures(base string) error {
 	if err := os.MkdirAll(screenerDir, 0755); err != nil {
 		return err
 	}
-	_, err = db.Exec(fmt.Sprintf(`
+	if _, err = db.Exec(fmt.Sprintf(`
 		COPY (
 			SELECT
-				'VCB' AS symbol,
-				14.2  AS pe_ratio,
-				2.1   AS pb_ratio,
-				22.5  AS roe,
-				6200.0 AS eps,
-				0.8   AS de_ratio,
-				1.4   AS current_ratio
+				'VCB'          AS symbol,
+				14.2::DOUBLE   AS pe_ratio,
+				2.1::DOUBLE    AS pb_ratio,
+				22.5::DOUBLE   AS roe,
+				6200.0::DOUBLE AS eps,
+				0.8::DOUBLE    AS de_ratio,
+				1.4::DOUBLE    AS current_ratio
 		) TO '%s/data.parquet' (FORMAT parquet)
-	`, screenerDir))
-	if err != nil {
+	`, screenerDir)); err != nil {
 		return fmt.Errorf("screener fixture: %w", err)
 	}
 
 	return nil
 }
 
-func openTestDuckDB(t *testing.T) *sql.DB {
+func openDB(t *testing.T) *sql.DB {
 	t.Helper()
-	cfg := config.Config{
-		MinioEndpoint:  "unused-in-integration",
-		MinioAccessKey: "x",
-		MinioSecretKey: "x",
-	}
-	// Don't load httpfs/S3 in integration tests — reading local files directly.
 	db, err := sql.Open("duckdb", "")
 	if err != nil {
 		t.Fatalf("open duckdb: %v", err)
 	}
-	_ = cfg
 	t.Cleanup(func() { db.Close() })
 	return db
 }
 
 const testBucket = "market-analysis"
 
-func TestQueryOHLCV_Integration(t *testing.T) {
-	db := openTestDuckDB(t)
-	bars, err := QueryOHLCV(db, testBucket, "VCB", "2026-05-20", "2026-05-20")
+func TestQueryOHLCV(t *testing.T) {
+	db := openDB(t)
+	bars, err := store.QueryOHLCV(db, testBucket, "VCB", "2026-05-20", "2026-05-20")
 	if err != nil {
 		t.Fatalf("QueryOHLCV: %v", err)
 	}
@@ -181,8 +170,8 @@ func TestQueryOHLCV_Integration(t *testing.T) {
 }
 
 func TestQueryOHLCV_NoResults(t *testing.T) {
-	db := openTestDuckDB(t)
-	bars, err := QueryOHLCV(db, testBucket, "NONEXISTENT", "2026-05-20", "2026-05-20")
+	db := openDB(t)
+	bars, err := store.QueryOHLCV(db, testBucket, "NONEXISTENT", "2026-05-20", "2026-05-20")
 	if err != nil {
 		t.Fatalf("QueryOHLCV: %v", err)
 	}
@@ -191,9 +180,9 @@ func TestQueryOHLCV_NoResults(t *testing.T) {
 	}
 }
 
-func TestQuerySymbols_Integration(t *testing.T) {
-	db := openTestDuckDB(t)
-	symbols, err := QuerySymbols(db, testBucket, "")
+func TestQuerySymbols(t *testing.T) {
+	db := openDB(t)
+	symbols, err := store.QuerySymbols(db, testBucket, "")
 	if err != nil {
 		t.Fatalf("QuerySymbols: %v", err)
 	}
@@ -210,12 +199,12 @@ func TestQuerySymbols_Integration(t *testing.T) {
 }
 
 func TestQuerySymbols_FilterByAssetClass(t *testing.T) {
-	db := openTestDuckDB(t)
-	stocks, err := QuerySymbols(db, testBucket, "stock")
+	db := openDB(t)
+	stocks, err := store.QuerySymbols(db, testBucket, "stock")
 	if err != nil {
 		t.Fatalf("QuerySymbols stock: %v", err)
 	}
-	cryptos, err := QuerySymbols(db, testBucket, "crypto")
+	cryptos, err := store.QuerySymbols(db, testBucket, "crypto")
 	if err != nil {
 		t.Fatalf("QuerySymbols crypto: %v", err)
 	}
@@ -223,13 +212,13 @@ func TestQuerySymbols_FilterByAssetClass(t *testing.T) {
 		t.Error("expected stocks")
 	}
 	if len(cryptos) != 0 {
-		t.Error("expected no cryptos in fixture")
+		t.Errorf("expected no cryptos in fixture, got %d", len(cryptos))
 	}
 }
 
-func TestQueryIndicators_Integration(t *testing.T) {
-	db := openTestDuckDB(t)
-	rows, err := QueryIndicators(db, testBucket, "VCB", "2026-05-20", "2026-05-20")
+func TestQueryIndicators(t *testing.T) {
+	db := openDB(t)
+	rows, err := store.QueryIndicators(db, testBucket, "VCB", "2026-05-20", "2026-05-20")
 	if err != nil {
 		t.Fatalf("QueryIndicators: %v", err)
 	}
@@ -245,9 +234,9 @@ func TestQueryIndicators_Integration(t *testing.T) {
 	}
 }
 
-func TestQueryDigest_Integration(t *testing.T) {
-	db := openTestDuckDB(t)
-	entries, err := QueryDigest(db, testBucket, "2026", "05", "20", "", 10)
+func TestQueryDigest(t *testing.T) {
+	db := openDB(t)
+	entries, err := store.QueryDigest(db, testBucket, "2026", "05", "20", "", 10)
 	if err != nil {
 		t.Fatalf("QueryDigest: %v", err)
 	}
@@ -267,12 +256,12 @@ func TestQueryDigest_Integration(t *testing.T) {
 }
 
 func TestQueryDigest_CategoryFilter(t *testing.T) {
-	db := openTestDuckDB(t)
-	gainers, err := QueryDigest(db, testBucket, "2026", "05", "20", "gainer", 10)
+	db := openDB(t)
+	gainers, err := store.QueryDigest(db, testBucket, "2026", "05", "20", "gainer", 10)
 	if err != nil {
 		t.Fatalf("QueryDigest gainer: %v", err)
 	}
-	losers, err := QueryDigest(db, testBucket, "2026", "05", "20", "loser", 10)
+	losers, err := store.QueryDigest(db, testBucket, "2026", "05", "20", "loser", 10)
 	if err != nil {
 		t.Fatalf("QueryDigest loser: %v", err)
 	}
@@ -284,9 +273,9 @@ func TestQueryDigest_CategoryFilter(t *testing.T) {
 	}
 }
 
-func TestQueryScreener_Integration(t *testing.T) {
-	db := openTestDuckDB(t)
-	results, err := QueryScreener(db, testBucket, "2026", "21")
+func TestQueryScreener(t *testing.T) {
+	db := openDB(t)
+	results, err := store.QueryScreener(db, testBucket, "2026", "21")
 	if err != nil {
 		t.Fatalf("QueryScreener: %v", err)
 	}
@@ -303,8 +292,8 @@ func TestQueryScreener_Integration(t *testing.T) {
 }
 
 func TestQueryScreener_NoData(t *testing.T) {
-	db := openTestDuckDB(t)
-	results, err := QueryScreener(db, testBucket, "2025", "01")
+	db := openDB(t)
+	results, err := store.QueryScreener(db, testBucket, "2025", "01")
 	if err != nil {
 		t.Fatalf("QueryScreener: %v", err)
 	}

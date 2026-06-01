@@ -1,13 +1,15 @@
-package config
+package unit
 
 import (
 	"os"
 	"testing"
+
+	"github.com/davidhoang2406/mekong-api/internal/config"
 )
 
 func TestLoad_Defaults(t *testing.T) {
-	unsetAll(t)
-	cfg, err := Load()
+	unsetAllConfigEnv(t)
+	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -29,14 +31,14 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_EnvOverrides(t *testing.T) {
-	unsetAll(t)
+	unsetAllConfigEnv(t)
 	t.Setenv("PORT", "9999")
 	t.Setenv("GIN_MODE", "debug")
 	t.Setenv("MINIO_ENDPOINT", "localhost:9000")
 	t.Setenv("POSTGRES_MAX_CONNS", "25")
 	t.Setenv("CACHE_TTL_SECONDS", "60")
 
-	cfg, err := Load()
+	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
@@ -60,7 +62,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 func TestLoad_InvalidMaxConns(t *testing.T) {
 	t.Setenv("POSTGRES_MAX_CONNS", "not-a-number")
 	t.Cleanup(func() { os.Unsetenv("POSTGRES_MAX_CONNS") })
-	_, err := Load()
+	_, err := config.Load()
 	if err == nil {
 		t.Fatal("expected error for invalid POSTGRES_MAX_CONNS")
 	}
@@ -69,35 +71,34 @@ func TestLoad_InvalidMaxConns(t *testing.T) {
 func TestLoad_InvalidCacheTTL(t *testing.T) {
 	t.Setenv("CACHE_TTL_SECONDS", "abc")
 	t.Cleanup(func() { os.Unsetenv("CACHE_TTL_SECONDS") })
-	_, err := Load()
+	_, err := config.Load()
 	if err == nil {
 		t.Fatal("expected error for invalid CACHE_TTL_SECONDS")
 	}
 }
 
 func TestValidate_OK(t *testing.T) {
-	cfg := Config{MinioEndpoint: "minio:9000", PostgresURL: "postgres://x"}
+	cfg := config.Config{MinioEndpoint: "minio:9000", PostgresURL: "postgres://x"}
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
 
 func TestValidate_MissingMinio(t *testing.T) {
-	cfg := Config{PostgresURL: "postgres://x"}
+	cfg := config.Config{PostgresURL: "postgres://x"}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for missing MinioEndpoint")
 	}
 }
 
 func TestValidate_MissingPostgres(t *testing.T) {
-	cfg := Config{MinioEndpoint: "minio:9000"}
+	cfg := config.Config{MinioEndpoint: "minio:9000"}
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("expected error for missing PostgresURL")
 	}
 }
 
-// unsetAll clears env vars that Load() reads, so defaults apply cleanly.
-func unsetAll(t *testing.T) {
+func unsetAllConfigEnv(t *testing.T) {
 	t.Helper()
 	vars := []string{
 		"PORT", "GIN_MODE", "MINIO_ENDPOINT", "MINIO_ACCESS_KEY",

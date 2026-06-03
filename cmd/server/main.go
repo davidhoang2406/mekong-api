@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -47,10 +51,30 @@ func main() {
 	a := app.New(duckDB, pg, cfg)
 	r := a.SetupRouter()
 
-	addr := fmt.Sprintf(":%s", cfg.Port)
-	slog.Info("server starting", "addr", addr)
-	if err := http.ListenAndServe(addr, r); err != nil {
-		slog.Error("server error", "err", err)
-		os.Exit(1)
+	srv := &http.Server{
+		Addr:         fmt.Sprintf(":%s", cfg.Port),
+		Handler:      r,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	go func() {
+		slog.Info("server starting", "addr", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server error", "err", err)
+			os.Exit(1)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	slog.Info("shutting down")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		slog.Error("graceful shutdown failed", "err", err)
 	}
 }

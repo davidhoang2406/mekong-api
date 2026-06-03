@@ -6,7 +6,7 @@ import (
 )
 
 type cacheEntry struct {
-	value     interface{}
+	value     any
 	expiresAt time.Time
 }
 
@@ -25,13 +25,13 @@ func NewCache(ttl time.Duration) *Cache {
 	return c
 }
 
-func (c *Cache) Set(key string, value interface{}) {
+func (c *Cache) Set(key string, value any) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.entries[key] = cacheEntry{value: value, expiresAt: time.Now().Add(c.ttl)}
 }
 
-func (c *Cache) Get(key string) (interface{}, bool) {
+func (c *Cache) Get(key string) (any, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	e, ok := c.entries[key]

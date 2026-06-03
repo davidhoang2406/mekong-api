@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -16,6 +18,25 @@ import (
 )
 
 var startTime = time.Now()
+
+// snapshotClient bounds the upstream snapshot call so a hung service can't
+// block the handler goroutine indefinitely.
+var snapshotClient = &http.Client{Timeout: 5 * time.Second}
+
+// symbolAndRange reads the symbol (required) plus the from/to date range
+// (defaulting to the last 30 days). On a missing symbol it writes the error
+// response and returns ok=false.
+func symbolAndRange(c *gin.Context) (symbol, from, to string, ok bool) {
+	symbol = c.Query("symbol")
+	if symbol == "" {
+		abortError(c, http.StatusBadRequest, "symbol is required", "MISSING_PARAM")
+		return "", "", "", false
+	}
+	now := time.Now()
+	from = c.DefaultQuery("from", now.AddDate(0, 0, -30).Format("2006-01-02"))
+	to = c.DefaultQuery("to", now.Format("2006-01-02"))
+	return symbol, from, to, true
+}
 
 func (a *App) Health(c *gin.Context) {
 	duckStatus := "connected"
@@ -56,14 +77,10 @@ func (a *App) GetSymbols(c *gin.Context) {
 }
 
 func (a *App) GetOHLCV(c *gin.Context) {
-	symbol := c.Query("symbol")
-	if symbol == "" {
-		abortError(c, http.StatusBadRequest, "symbol is required", "MISSING_PARAM")
+	symbol, from, to, ok := symbolAndRange(c)
+	if !ok {
 		return
 	}
-	now := time.Now()
-	from := c.DefaultQuery("from", now.AddDate(0, 0, -30).Format("2006-01-02"))
-	to := c.DefaultQuery("to", now.Format("2006-01-02"))
 
 	bars, err := store.QueryOHLCV(a.DuckDB, a.Cfg.MinioAnalysisBucket, symbol, from, to)
 	if err != nil {
@@ -74,21 +91,20 @@ func (a *App) GetOHLCV(c *gin.Context) {
 		abortError(c, http.StatusNotFound, "no data found for symbol/date range", "NOT_FOUND")
 		return
 	}
-	assetClass, exchange, _ := store.QueryOHLCVMeta(a.DuckDB, a.Cfg.MinioAnalysisBucket, symbol)
+	assetClass, exchange, err := store.QueryOHLCVMeta(a.DuckDB, a.Cfg.MinioAnalysisBucket, symbol)
+	if err != nil {
+		slog.Warn("ohlcv meta lookup failed", "symbol", symbol, "err", err)
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"symbol": symbol, "asset_class": assetClass, "exchange": exchange, "bars": bars,
 	})
 }
 
 func (a *App) GetIndicators(c *gin.Context) {
-	symbol := c.Query("symbol")
-	if symbol == "" {
-		abortError(c, http.StatusBadRequest, "symbol is required", "MISSING_PARAM")
+	symbol, from, to, ok := symbolAndRange(c)
+	if !ok {
 		return
 	}
-	now := time.Now()
-	from := c.DefaultQuery("from", now.AddDate(0, 0, -30).Format("2006-01-02"))
-	to := c.DefaultQuery("to", now.Format("2006-01-02"))
 
 	indicators, err := store.QueryIndicators(a.DuckDB, a.Cfg.MinioAnalysisBucket, symbol, from, to)
 	if err != nil {
@@ -164,8 +180,13 @@ func (a *App) GetSnapshot(c *gin.Context) {
 		return
 	}
 
-	url := fmt.Sprintf("%s/internal/snapshot?symbol=%s", a.Cfg.WSInternalURL, symbol)
-	resp, err := http.Get(url) //nolint:gosec
+	endpoint := fmt.Sprintf("%s/internal/snapshot?symbol=%s", a.Cfg.WSInternalURL, url.QueryEscape(symbol))
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, endpoint, nil)
+	if err != nil {
+		abortError(c, http.StatusInternalServerError, "failed to build snapshot request", "INTERNAL_ERROR")
+		return
+	}
+	resp, err := snapshotClient.Do(req)
 	if err != nil {
 		abortError(c, http.StatusBadGateway, "snapshot service unreachable", "BAD_GATEWAY")
 		return

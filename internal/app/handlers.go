@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -62,7 +61,7 @@ func (a *App) GetSymbols(c *gin.Context) {
 		c.JSON(http.StatusOK, cached)
 		return
 	}
-	symbols, err := store.QuerySymbols(a.DuckDB, a.Cfg.MinioAnalysisBucket, assetClass)
+	symbols, err := store.QuerySymbolsPG(c.Request.Context(), a.PG, assetClass)
 	if err != nil {
 		abortError(c, http.StatusInternalServerError, err.Error(), "QUERY_ERROR")
 		return
@@ -82,7 +81,7 @@ func (a *App) GetOHLCV(c *gin.Context) {
 		return
 	}
 
-	bars, err := store.QueryOHLCV(a.DuckDB, a.Cfg.MinioAnalysisBucket, symbol, from, to)
+	bars, assetClass, exchange, err := store.QueryOHLCVPG(c.Request.Context(), a.PG, symbol, from, to)
 	if err != nil {
 		abortError(c, http.StatusInternalServerError, err.Error(), "QUERY_ERROR")
 		return
@@ -90,10 +89,6 @@ func (a *App) GetOHLCV(c *gin.Context) {
 	if len(bars) == 0 {
 		abortError(c, http.StatusNotFound, "no data found for symbol/date range", "NOT_FOUND")
 		return
-	}
-	assetClass, exchange, err := store.QueryOHLCVMeta(a.DuckDB, a.Cfg.MinioAnalysisBucket, symbol)
-	if err != nil {
-		slog.Warn("ohlcv meta lookup failed", "symbol", symbol, "err", err)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"symbol": symbol, "asset_class": assetClass, "exchange": exchange, "bars": bars,
@@ -106,7 +101,7 @@ func (a *App) GetIndicators(c *gin.Context) {
 		return
 	}
 
-	indicators, err := store.QueryIndicators(a.DuckDB, a.Cfg.MinioAnalysisBucket, symbol, from, to)
+	indicators, err := store.QueryIndicatorsPG(c.Request.Context(), a.PG, symbol, from, to)
 	if err != nil {
 		abortError(c, http.StatusInternalServerError, err.Error(), "QUERY_ERROR")
 		return
@@ -129,17 +124,12 @@ func (a *App) GetDigest(c *gin.Context) {
 		abortError(c, http.StatusBadRequest, "limit must be a positive integer", "INVALID_PARAM")
 		return
 	}
-	t, err := time.Parse("2006-01-02", date)
-	if err != nil {
+	if _, err := time.Parse("2006-01-02", date); err != nil {
 		abortError(c, http.StatusBadRequest, "date must be YYYY-MM-DD", "INVALID_PARAM")
 		return
 	}
 
-	entries, err := store.QueryDigest(
-		a.DuckDB, a.Cfg.MinioAnalysisBucket,
-		t.Format("2006"), t.Format("01"), t.Format("02"),
-		category, limit,
-	)
+	entries, err := store.QueryDigestPG(c.Request.Context(), a.PG, date, category, limit)
 	if err != nil {
 		abortError(c, http.StatusInternalServerError, err.Error(), "QUERY_ERROR")
 		return
@@ -157,7 +147,7 @@ func (a *App) GetScreener(c *gin.Context) {
 	year := c.DefaultQuery("year", now.Format("2006"))
 	week := c.DefaultQuery("week", fmt.Sprintf("%02d", isoWeek))
 
-	results, err := store.QueryScreener(a.DuckDB, a.Cfg.MinioAnalysisBucket, year, week)
+	results, err := store.QueryScreenerPG(c.Request.Context(), a.PG, year, week)
 	if err != nil {
 		abortError(c, http.StatusInternalServerError, err.Error(), "QUERY_ERROR")
 		return

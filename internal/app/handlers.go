@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"time"
 
@@ -134,11 +135,143 @@ func (a *App) GetDigest(c *gin.Context) {
 		abortError(c, http.StatusInternalServerError, err.Error(), "QUERY_ERROR")
 		return
 	}
+
+	fallback := false
 	if len(entries) == 0 {
-		abortError(c, http.StatusNotFound, "no digest data for date", "NOT_FOUND")
+		latestDate, err := store.LatestDigestDate(c.Request.Context(), a.PG)
+		if err != nil || latestDate == "" {
+			abortError(c, http.StatusNotFound, "no digest data available", "NOT_FOUND")
+			return
+		}
+		entries, err = store.QueryDigestPG(c.Request.Context(), a.PG, latestDate, category, limit)
+		if err != nil {
+			abortError(c, http.StatusInternalServerError, err.Error(), "QUERY_ERROR")
+			return
+		}
+		if len(entries) == 0 {
+			abortError(c, http.StatusNotFound, "no digest data available", "NOT_FOUND")
+			return
+		}
+		date = latestDate
+		fallback = true
+	}
+
+	c.JSON(http.StatusOK, gin.H{"date": date, "digest": entries, "fallback": fallback})
+}
+
+func (a *App) GetDigestLive(c *gin.Context) {
+	limitStr := c.DefaultQuery("limit", "10")
+	category := c.DefaultQuery("category", "")
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit < 1 {
+		abortError(c, http.StatusBadRequest, "limit must be a positive integer", "INVALID_PARAM")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"date": date, "digest": entries})
+
+	if a.Cfg.WSInternalURL == "" {
+		abortError(c, http.StatusServiceUnavailable, "snapshot service not configured", "NOT_CONFIGURED")
+		return
+	}
+
+	endpoint := a.Cfg.WSInternalURL + "/internal/snapshot/all"
+	req, err := http.NewRequestWithContext(c.Request.Context(), http.MethodGet, endpoint, nil)
+	if err != nil {
+		abortError(c, http.StatusInternalServerError, "failed to build snapshot request", "INTERNAL_ERROR")
+		return
+	}
+	resp, err := snapshotClient.Do(req)
+	if err != nil {
+		abortError(c, http.StatusBadGateway, "snapshot service unreachable", "BAD_GATEWAY")
+		return
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	var ticks []model.PriceSnapshot
+	if err := json.Unmarshal(body, &ticks); err != nil {
+		abortError(c, http.StatusInternalServerError, "invalid snapshot response", "PARSE_ERROR")
+		return
+	}
+
+	entries := computeLiveDigest(ticks, category, limit)
+	c.JSON(http.StatusOK, gin.H{
+		"live":   true,
+		"as_of":  time.Now().UTC().Format(time.RFC3339),
+		"digest": entries,
+	})
+}
+
+func computeLiveDigest(ticks []model.PriceSnapshot, category string, topN int) []model.DigestEntry {
+	valid := make([]model.PriceSnapshot, 0, len(ticks))
+	for _, t := range ticks {
+		if t.Price > 0 {
+			valid = append(valid, t)
+		}
+	}
+
+	cats := []string{"gainer", "loser", "volume"}
+	if category != "" {
+		cats = []string{category}
+	}
+
+	var out []model.DigestEntry
+	for _, cat := range cats {
+		out = append(out, rankLiveCategory(valid, cat, topN)...)
+	}
+	return out
+}
+
+func rankLiveCategory(ticks []model.PriceSnapshot, category string, topN int) []model.DigestEntry {
+	pool := make([]model.PriceSnapshot, len(ticks))
+	copy(pool, ticks)
+
+	switch category {
+	case "gainer":
+		filtered := make([]model.PriceSnapshot, 0, len(pool))
+		for _, t := range pool {
+			if t.PctChange > 0 {
+				filtered = append(filtered, t)
+			}
+		}
+		sort.Slice(filtered, func(i, j int) bool { return filtered[i].PctChange > filtered[j].PctChange })
+		pool = filtered
+	case "loser":
+		filtered := make([]model.PriceSnapshot, 0, len(pool))
+		for _, t := range pool {
+			if t.PctChange < 0 {
+				filtered = append(filtered, t)
+			}
+		}
+		sort.Slice(filtered, func(i, j int) bool { return filtered[i].PctChange < filtered[j].PctChange })
+		pool = filtered
+	case "volume":
+		sort.Slice(pool, func(i, j int) bool { return pool[i].Volume > pool[j].Volume })
+	}
+
+	if len(pool) > topN {
+		pool = pool[:topN]
+	}
+
+	out := make([]model.DigestEntry, len(pool))
+	for i, t := range pool {
+		openPrice := t.Price
+		if t.PctChange != -100 {
+			openPrice = t.Price / (1 + t.PctChange/100)
+		}
+		out[i] = model.DigestEntry{
+			Category:   category,
+			Rank:       i + 1,
+			Symbol:     t.Symbol,
+			Exchange:   t.Exchange,
+			AssetClass: t.AssetClass,
+			Open:       openPrice,
+			Close:      t.Price,
+			Volume:     t.Volume,
+			PctChange:  t.PctChange,
+		}
+	}
+	return out
 }
 
 func (a *App) GetScreener(c *gin.Context) {

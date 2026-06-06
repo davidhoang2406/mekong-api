@@ -17,6 +17,7 @@ func (a *App) SetupRouter() *gin.Engine {
 		v1.GET("/ohlcv", a.GetOHLCV)
 		v1.GET("/indicators", a.GetIndicators)
 		v1.GET("/digest", a.GetDigest)
+		v1.GET("/digest/live", a.GetDigestLive)
 		v1.GET("/screener", a.GetScreener)
 		v1.GET("/snapshot", a.GetSnapshot)
 	}

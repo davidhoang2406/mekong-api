@@ -92,6 +92,18 @@ func QueryIndicatorsPG(ctx context.Context, pool *pgxpool.Pool, symbol, from, to
 	return out, rows.Err()
 }
 
+// LatestDigestDate returns the most recent date in digest_entries, or "" if table is empty.
+func LatestDigestDate(ctx context.Context, pool *pgxpool.Pool) (string, error) {
+	var date *string
+	if err := pool.QueryRow(ctx, `SELECT to_char(MAX(date), 'YYYY-MM-DD') FROM digest_entries`).Scan(&date); err != nil {
+		return "", fmt.Errorf("latest digest date: %w", err)
+	}
+	if date == nil {
+		return "", nil
+	}
+	return *date, nil
+}
+
 func QueryDigestPG(ctx context.Context, pool *pgxpool.Pool, date, category string, limit int) ([]model.DigestEntry, error) {
 	rows, err := pool.Query(ctx, `
 		SELECT category, rank, symbol, exchange, asset_class,

@@ -19,6 +19,8 @@ type Config struct {
 	SnapshotCacheURL    string
 	WSInternalURL       string
 	LogLevel            string
+	JWTSecret           string
+	JWTExpiryHours      int
 }
 
 func Load() (Config, error) {
@@ -29,6 +31,11 @@ func Load() (Config, error) {
 	cacheTTL, err := strconv.Atoi(getEnv("CACHE_TTL_SECONDS", "300"))
 	if err != nil {
 		return Config{}, fmt.Errorf("CACHE_TTL_SECONDS must be an integer: %w", err)
+	}
+
+	jwtExpiry, err := strconv.Atoi(getEnv("JWT_EXPIRY_HOURS", "720"))
+	if err != nil {
+		return Config{}, fmt.Errorf("JWT_EXPIRY_HOURS must be an integer: %w", err)
 	}
 
 	return Config{
@@ -44,6 +51,8 @@ func Load() (Config, error) {
 		SnapshotCacheURL:    getEnv("SNAPSHOT_CACHE_URL", ""),
 		WSInternalURL:       getEnv("WS_INTERNAL_URL", ""),
 		LogLevel:            getEnv("LOG_LEVEL", "info"),
+		JWTSecret:           getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTExpiryHours:      jwtExpiry,
 	}, nil
 }
 

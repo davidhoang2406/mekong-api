@@ -80,6 +80,52 @@ func CreateAPIKey(ctx context.Context, pool *pgxpool.Pool, userID, label string)
 	return k, rawKey, nil
 }
 
+// FindOrCreateSocialUser looks up a user by provider+providerID, creates them if new.
+func FindOrCreateSocialUser(ctx context.Context, pool *pgxpool.Pool, provider, providerID, email, name string) (model.User, error) {
+	var u model.User
+	// Look up existing identity
+	err := pool.QueryRow(ctx, `
+		SELECT u.id, u.email, u.name, to_char(u.created_at, 'YYYY-MM-DD"T"HH24:MI:SSZ')
+		FROM user_identities i JOIN users u ON u.id = i.user_id
+		WHERE i.provider = $1 AND i.provider_id = $2
+	`, provider, providerID).Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt)
+	if err == nil {
+		return u, nil
+	}
+
+	// Create user + identity in a transaction
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		return model.User{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	// Upsert user by email (may already exist from local login)
+	err = tx.QueryRow(ctx, `
+		INSERT INTO users (email, name)
+		VALUES ($1, $2)
+		ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name
+		RETURNING id, email, name, to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSZ')
+	`, email, name).Scan(&u.ID, &u.Email, &u.Name, &u.CreatedAt)
+	if err != nil {
+		return model.User{}, fmt.Errorf("upsert user: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, `
+		INSERT INTO user_identities (user_id, provider, provider_id)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (provider, provider_id) DO NOTHING
+	`, u.ID, provider, providerID)
+	if err != nil {
+		return model.User{}, fmt.Errorf("insert identity: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return model.User{}, fmt.Errorf("commit: %w", err)
+	}
+	return u, nil
+}
+
 func ListAPIKeys(ctx context.Context, pool *pgxpool.Pool, userID string) ([]model.APIKey, error) {
 	rows, err := pool.Query(ctx, `
 		SELECT id, user_id, label, rate_limit, is_active,

@@ -21,6 +21,11 @@ type Config struct {
 	LogLevel            string
 	JWTSecret           string
 	JWTExpiryHours      int
+	GoogleClientID      string
+	GoogleClientSecret  string
+	FacebookClientID    string
+	FacebookClientSecret string
+	OAuthRedirectBase   string
 }
 
 func Load() (Config, error) {
@@ -51,8 +56,13 @@ func Load() (Config, error) {
 		SnapshotCacheURL:    getEnv("SNAPSHOT_CACHE_URL", ""),
 		WSInternalURL:       getEnv("WS_INTERNAL_URL", ""),
 		LogLevel:            getEnv("LOG_LEVEL", "info"),
-		JWTSecret:           getEnv("JWT_SECRET", "change-me-in-production"),
-		JWTExpiryHours:      jwtExpiry,
+		JWTSecret:            getEnv("JWT_SECRET", "change-me-in-production"),
+		JWTExpiryHours:       jwtExpiry,
+		GoogleClientID:       getEnv("GOOGLE_CLIENT_ID", ""),
+		GoogleClientSecret:   getEnv("GOOGLE_CLIENT_SECRET", ""),
+		FacebookClientID:     getEnv("FACEBOOK_CLIENT_ID", ""),
+		FacebookClientSecret: getEnv("FACEBOOK_CLIENT_SECRET", ""),
+		OAuthRedirectBase:    getEnv("OAUTH_REDIRECT_BASE", "http://localhost:8080"),
 	}, nil
 }
 

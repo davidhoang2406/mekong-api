@@ -62,14 +62,14 @@ func (a *App) GoogleLogin(c *gin.Context) {
 		return
 	}
 	state := oauthState()
-	c.SetCookie("oauth_state", state, 300, "/", "", false, true)
+	a.oauthState.set(state)
 	c.Redirect(http.StatusTemporaryRedirect, a.googleConfig().AuthCodeURL(state))
 }
 
 // GoogleCallback handles the Google OAuth callback.
 func (a *App) GoogleCallback(c *gin.Context) {
-	if err := validateOAuthState(c); err != nil {
-		abortError(c, http.StatusBadRequest, err.Error(), "INVALID_STATE")
+	if !a.oauthState.validate(c.Query("state")) {
+		abortError(c, http.StatusBadRequest, "invalid OAuth state", "INVALID_STATE")
 		return
 	}
 	token, err := a.googleConfig().Exchange(context.Background(), c.Query("code"))
@@ -102,14 +102,14 @@ func (a *App) GitHubLogin(c *gin.Context) {
 		return
 	}
 	state := oauthState()
-	c.SetCookie("oauth_state", state, 300, "/", "", false, true)
+	a.oauthState.set(state)
 	c.Redirect(http.StatusTemporaryRedirect, a.githubConfig().AuthCodeURL(state))
 }
 
 // GitHubCallback handles the GitHub OAuth callback.
 func (a *App) GitHubCallback(c *gin.Context) {
-	if err := validateOAuthState(c); err != nil {
-		abortError(c, http.StatusBadRequest, err.Error(), "INVALID_STATE")
+	if !a.oauthState.validate(c.Query("state")) {
+		abortError(c, http.StatusBadRequest, "invalid OAuth state", "INVALID_STATE")
 		return
 	}
 	token, err := a.githubConfig().Exchange(context.Background(), c.Query("code"))
@@ -142,14 +142,6 @@ func (a *App) GitHubCallback(c *gin.Context) {
 		return
 	}
 	c.Redirect(http.StatusTemporaryRedirect, a.Cfg.OAuthRedirectBase+"/auth/callback?token="+jwt)
-}
-
-func validateOAuthState(c *gin.Context) error {
-	cookie, err := c.Cookie("oauth_state")
-	if err != nil || cookie != c.Query("state") {
-		return fmt.Errorf("invalid OAuth state")
-	}
-	return nil
 }
 
 func fetchGoogleUserInfo(accessToken string) (map[string]interface{}, error) {

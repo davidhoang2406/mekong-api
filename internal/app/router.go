@@ -2,6 +2,8 @@ package app
 
 import (
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 
 	"github.com/davidhoang2406/mekong-api/internal/middleware"
 )
@@ -9,6 +11,9 @@ import (
 func (a *App) SetupRouter() *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery(), middleware.SlogLogger())
+
+	// Swagger UI at /api/docs
+	r.GET("/api/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	v1 := r.Group("/api/v1")
 	{

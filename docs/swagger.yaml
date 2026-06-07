@@ -1,0 +1,402 @@
+basePath: /api/v1
+definitions:
+  model.DigestEntry:
+    properties:
+      asset_class:
+        type: string
+      category:
+        type: string
+      close:
+        type: number
+      exchange:
+        type: string
+      open:
+        type: number
+      pct_change:
+        type: number
+      rank:
+        type: integer
+      symbol:
+        type: string
+      volume:
+        type: integer
+    type: object
+  model.DigestResponse:
+    properties:
+      date:
+        type: string
+      digest:
+        items:
+          $ref: '#/definitions/model.DigestEntry'
+        type: array
+    type: object
+  model.IndicatorRow:
+    properties:
+      bb_lower:
+        type: number
+      bb_mid:
+        type: number
+      bb_upper:
+        type: number
+      close:
+        type: number
+      macd:
+        type: number
+      macd_hist:
+        type: number
+      macd_signal:
+        type: number
+      rsi14:
+        type: number
+      sma20:
+        type: number
+      sma50:
+        type: number
+      sma200:
+        type: number
+      time:
+        type: string
+    type: object
+  model.IndicatorsResponse:
+    properties:
+      indicators:
+        items:
+          $ref: '#/definitions/model.IndicatorRow'
+        type: array
+      symbol:
+        type: string
+    type: object
+  model.OHLCVBar:
+    properties:
+      close:
+        type: number
+      high:
+        type: number
+      low:
+        type: number
+      open:
+        type: number
+      time:
+        type: string
+      volume:
+        type: integer
+    type: object
+  model.OHLCVResponse:
+    properties:
+      asset_class:
+        type: string
+      bars:
+        items:
+          $ref: '#/definitions/model.OHLCVBar'
+        type: array
+      exchange:
+        type: string
+      symbol:
+        type: string
+    type: object
+  model.PriceSnapshot:
+    properties:
+      ask:
+        type: number
+      asset_class:
+        type: string
+      bid:
+        type: number
+      change:
+        type: number
+      exchange:
+        type: string
+      pct_change:
+        type: number
+      price:
+        type: number
+      symbol:
+        type: string
+      timestamp:
+        type: string
+      volume:
+        type: integer
+    type: object
+  model.ScreenerResponse:
+    properties:
+      results:
+        items:
+          $ref: '#/definitions/model.ScreenerResult'
+        type: array
+      week:
+        type: string
+      year:
+        type: string
+    type: object
+  model.ScreenerResult:
+    properties:
+      current_ratio:
+        type: number
+      de_ratio:
+        type: number
+      eps:
+        type: number
+      pb_ratio:
+        type: number
+      pe_ratio:
+        type: number
+      roe:
+        type: number
+      symbol:
+        type: string
+    type: object
+  model.SymbolInfo:
+    properties:
+      asset_class:
+        type: string
+      exchange:
+        type: string
+      first_date:
+        type: string
+      last_date:
+        type: string
+      symbol:
+        type: string
+    type: object
+  model.SymbolsResponse:
+    properties:
+      symbols:
+        items:
+          $ref: '#/definitions/model.SymbolInfo'
+        type: array
+    type: object
+host: app.mekong.local
+info:
+  contact: {}
+  description: Real-time and historical market data for Vietnamese stocks and crypto.
+  title: Mekong Market Data API
+  version: "1.0"
+paths:
+  /digest:
+    get:
+      parameters:
+      - description: 'Date YYYY-MM-DD (default: today, falls back to latest)'
+        in: query
+        name: date
+        type: string
+      - description: 'Filter category: gainer, loser, volume'
+        in: query
+        name: category
+        type: string
+      - description: 'Max results per category (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.DigestResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Daily market digest (top gainers/losers/volume)
+      tags:
+      - digest
+  /digest/live:
+    get:
+      parameters:
+      - description: 'Filter: gainer, loser, volume'
+        in: query
+        name: category
+        type: string
+      - description: 'Max results per category (default: 10)'
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "503":
+          description: Service Unavailable
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Live intraday digest computed from WS snapshot cache
+      tags:
+      - digest
+  /health:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Service health check
+      tags:
+      - system
+  /indicators:
+    get:
+      parameters:
+      - description: Symbol
+        in: query
+        name: symbol
+        required: true
+        type: string
+      - description: Start date YYYY-MM-DD
+        in: query
+        name: from
+        type: string
+      - description: End date YYYY-MM-DD
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.IndicatorsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Technical indicators for a symbol
+      tags:
+      - market-data
+  /ohlcv:
+    get:
+      parameters:
+      - description: Symbol (e.g. VCB, BTC-USDT)
+        in: query
+        name: symbol
+        required: true
+        type: string
+      - description: 'Start date YYYY-MM-DD (default: 30 days ago)'
+        in: query
+        name: from
+        type: string
+      - description: 'End date YYYY-MM-DD (default: today)'
+        in: query
+        name: to
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.OHLCVResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: OHLCV bars for a symbol
+      tags:
+      - market-data
+  /screener:
+    get:
+      parameters:
+      - description: 'Year (default: current)'
+        in: query
+        name: year
+        type: string
+      - description: 'ISO week number (default: current)'
+        in: query
+        name: week
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.ScreenerResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Weekly fundamental screener
+      tags:
+      - market-data
+  /snapshot:
+    get:
+      parameters:
+      - description: Symbol (e.g. BTC-USDT)
+        in: query
+        name: symbol
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.PriceSnapshot'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "502":
+          description: Bad Gateway
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Latest live price snapshot for a symbol
+      tags:
+      - live
+  /symbols:
+    get:
+      parameters:
+      - description: Filter by asset class (stock, crypto)
+        in: query
+        name: asset_class
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.SymbolsResponse'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List available symbols
+      tags:
+      - market-data
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    description: JWT token — prefix value with "Bearer "
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

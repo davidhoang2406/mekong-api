@@ -38,6 +38,12 @@ func symbolAndRange(c *gin.Context) (symbol, from, to string, ok bool) {
 	return symbol, from, to, true
 }
 
+// Health godoc
+// @Summary     Service health check
+// @Tags        system
+// @Produce     json
+// @Success     200 {object} map[string]interface{}
+// @Router      /health [get]
 func (a *App) Health(c *gin.Context) {
 	duckStatus := "connected"
 	if err := a.DuckDB.PingContext(context.Background()); err != nil {
@@ -55,6 +61,14 @@ func (a *App) Health(c *gin.Context) {
 	})
 }
 
+// GetSymbols godoc
+// @Summary     List available symbols
+// @Tags        market-data
+// @Produce     json
+// @Param       asset_class query string false "Filter by asset class (stock, crypto)"
+// @Success     200 {object} model.SymbolsResponse
+// @Failure     404 {object} map[string]interface{}
+// @Router      /symbols [get]
 func (a *App) GetSymbols(c *gin.Context) {
 	assetClass := c.Query("asset_class")
 	cacheKey := "symbols:" + assetClass
@@ -76,6 +90,17 @@ func (a *App) GetSymbols(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// GetOHLCV godoc
+// @Summary     OHLCV bars for a symbol
+// @Tags        market-data
+// @Produce     json
+// @Param       symbol query string true  "Symbol (e.g. VCB, BTC-USDT)"
+// @Param       from   query string false "Start date YYYY-MM-DD (default: 30 days ago)"
+// @Param       to     query string false "End date YYYY-MM-DD (default: today)"
+// @Success     200 {object} model.OHLCVResponse
+// @Failure     400 {object} map[string]interface{}
+// @Failure     404 {object} map[string]interface{}
+// @Router      /ohlcv [get]
 func (a *App) GetOHLCV(c *gin.Context) {
 	symbol, from, to, ok := symbolAndRange(c)
 	if !ok {
@@ -96,6 +121,17 @@ func (a *App) GetOHLCV(c *gin.Context) {
 	})
 }
 
+// GetIndicators godoc
+// @Summary     Technical indicators for a symbol
+// @Tags        market-data
+// @Produce     json
+// @Param       symbol query string true  "Symbol"
+// @Param       from   query string false "Start date YYYY-MM-DD"
+// @Param       to     query string false "End date YYYY-MM-DD"
+// @Success     200 {object} model.IndicatorsResponse
+// @Failure     400 {object} map[string]interface{}
+// @Failure     404 {object} map[string]interface{}
+// @Router      /indicators [get]
 func (a *App) GetIndicators(c *gin.Context) {
 	symbol, from, to, ok := symbolAndRange(c)
 	if !ok {
@@ -114,6 +150,16 @@ func (a *App) GetIndicators(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"symbol": symbol, "indicators": indicators})
 }
 
+// GetDigest godoc
+// @Summary     Daily market digest (top gainers/losers/volume)
+// @Tags        digest
+// @Produce     json
+// @Param       date     query string false "Date YYYY-MM-DD (default: today, falls back to latest)"
+// @Param       category query string false "Filter category: gainer, loser, volume"
+// @Param       limit    query int    false "Max results per category (default: 10)"
+// @Success     200 {object} model.DigestResponse
+// @Failure     404 {object} map[string]interface{}
+// @Router      /digest [get]
 func (a *App) GetDigest(c *gin.Context) {
 	now := time.Now()
 	date := c.DefaultQuery("date", now.Format("2006-01-02"))
@@ -159,6 +205,15 @@ func (a *App) GetDigest(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"date": date, "digest": entries, "fallback": fallback})
 }
 
+// GetDigestLive godoc
+// @Summary     Live intraday digest computed from WS snapshot cache
+// @Tags        digest
+// @Produce     json
+// @Param       category query string false "Filter: gainer, loser, volume"
+// @Param       limit    query int    false "Max results per category (default: 10)"
+// @Success     200 {object} map[string]interface{}
+// @Failure     503 {object} map[string]interface{}
+// @Router      /digest/live [get]
 func (a *App) GetDigestLive(c *gin.Context) {
 	limitStr := c.DefaultQuery("limit", "10")
 	category := c.DefaultQuery("category", "")
@@ -274,6 +329,15 @@ func rankLiveCategory(ticks []model.PriceSnapshot, category string, topN int) []
 	return out
 }
 
+// GetScreener godoc
+// @Summary     Weekly fundamental screener
+// @Tags        market-data
+// @Produce     json
+// @Param       year query string false "Year (default: current)"
+// @Param       week query string false "ISO week number (default: current)"
+// @Success     200 {object} model.ScreenerResponse
+// @Failure     404 {object} map[string]interface{}
+// @Router      /screener [get]
 func (a *App) GetScreener(c *gin.Context) {
 	now := time.Now()
 	_, isoWeek := now.ISOWeek()
@@ -292,6 +356,15 @@ func (a *App) GetScreener(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"year": year, "week": week, "results": results})
 }
 
+// GetSnapshot godoc
+// @Summary     Latest live price snapshot for a symbol
+// @Tags        live
+// @Produce     json
+// @Param       symbol query string true "Symbol (e.g. BTC-USDT)"
+// @Success     200 {object} model.PriceSnapshot
+// @Failure     400 {object} map[string]interface{}
+// @Failure     502 {object} map[string]interface{}
+// @Router      /snapshot [get]
 func (a *App) GetSnapshot(c *gin.Context) {
 	symbol := c.Query("symbol")
 	if symbol == "" {

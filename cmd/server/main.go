@@ -1,3 +1,13 @@
+// @title           Mekong Market Data API
+// @version         1.0
+// @description     Real-time and historical market data for Vietnamese stocks and crypto.
+// @host            app.mekong.local
+// @BasePath        /api/v1
+// @schemes         http https
+// @securityDefinitions.apikey BearerAuth
+// @in              header
+// @name            Authorization
+// @description     JWT token — prefix value with "Bearer "
 package main
 
 import (
@@ -13,6 +23,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	_ "github.com/davidhoang2406/mekong-api/docs"
 	"github.com/davidhoang2406/mekong-api/internal/app"
 	"github.com/davidhoang2406/mekong-api/internal/config"
 	"github.com/davidhoang2406/mekong-api/internal/store"

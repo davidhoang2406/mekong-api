@@ -13,7 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/facebook"
+	githubOAuth "golang.org/x/oauth2/github"
 	"golang.org/x/oauth2/google"
 
 	"github.com/davidhoang2406/mekong-api/internal/store"
@@ -29,13 +29,13 @@ func (a *App) googleConfig() *oauth2.Config {
 	}
 }
 
-func (a *App) facebookConfig() *oauth2.Config {
+func (a *App) githubConfig() *oauth2.Config {
 	return &oauth2.Config{
-		ClientID:     a.Cfg.FacebookClientID,
-		ClientSecret: a.Cfg.FacebookClientSecret,
-		RedirectURL:  a.Cfg.OAuthRedirectBase + "/api/v1/auth/facebook/callback",
-		Scopes:       []string{"email", "public_profile"},
-		Endpoint:     facebook.Endpoint,
+		ClientID:     a.Cfg.GitHubClientID,
+		ClientSecret: a.Cfg.GitHubClientSecret,
+		RedirectURL:  a.Cfg.OAuthRedirectBase + "/api/v1/auth/github/callback",
+		Scopes:       []string{"user:email"},
+		Endpoint:     githubOAuth.Endpoint,
 	}
 }
 
@@ -95,34 +95,43 @@ func (a *App) GoogleCallback(c *gin.Context) {
 	c.Redirect(http.StatusTemporaryRedirect, a.Cfg.OAuthRedirectBase+"/auth/callback?token="+jwt)
 }
 
-// FacebookLogin redirects to Facebook OAuth consent screen.
-func (a *App) FacebookLogin(c *gin.Context) {
-	if a.Cfg.FacebookClientID == "" {
-		abortError(c, http.StatusServiceUnavailable, "Facebook OAuth not configured", "NOT_CONFIGURED")
+// GitHubLogin redirects to GitHub OAuth consent screen.
+func (a *App) GitHubLogin(c *gin.Context) {
+	if a.Cfg.GitHubClientID == "" {
+		abortError(c, http.StatusServiceUnavailable, "GitHub OAuth not configured", "NOT_CONFIGURED")
 		return
 	}
 	state := oauthState()
 	c.SetCookie("oauth_state", state, 300, "/", "", false, true)
-	c.Redirect(http.StatusTemporaryRedirect, a.facebookConfig().AuthCodeURL(state))
+	c.Redirect(http.StatusTemporaryRedirect, a.githubConfig().AuthCodeURL(state))
 }
 
-// FacebookCallback handles the Facebook OAuth callback.
-func (a *App) FacebookCallback(c *gin.Context) {
+// GitHubCallback handles the GitHub OAuth callback.
+func (a *App) GitHubCallback(c *gin.Context) {
 	if err := validateOAuthState(c); err != nil {
 		abortError(c, http.StatusBadRequest, err.Error(), "INVALID_STATE")
 		return
 	}
-	token, err := a.facebookConfig().Exchange(context.Background(), c.Query("code"))
+	token, err := a.githubConfig().Exchange(context.Background(), c.Query("code"))
 	if err != nil {
 		abortError(c, http.StatusBadGateway, "failed to exchange code", "OAUTH_ERROR")
 		return
 	}
-	info, err := fetchFacebookUserInfo(token.AccessToken)
+	info, err := fetchGitHubUserInfo(token.AccessToken)
 	if err != nil {
 		abortError(c, http.StatusBadGateway, "failed to fetch user info", "OAUTH_ERROR")
 		return
 	}
-	user, err := store.FindOrCreateSocialUser(c.Request.Context(), a.PG, "facebook", info["id"].(string), info["email"].(string), fmt.Sprintf("%v", info["name"]))
+	providerID := fmt.Sprintf("%v", info["id"])
+	email, _ := info["email"].(string)
+	name, _ := info["name"].(string)
+	if name == "" {
+		name, _ = info["login"].(string)
+	}
+	if email == "" {
+		email, _ = info["login"].(string)
+	}
+	user, err := store.FindOrCreateSocialUser(c.Request.Context(), a.PG, "github", providerID, email, name)
 	if err != nil {
 		abortError(c, http.StatusInternalServerError, err.Error(), "INTERNAL_ERROR")
 		return
@@ -154,8 +163,11 @@ func fetchGoogleUserInfo(accessToken string) (map[string]interface{}, error) {
 	return info, json.Unmarshal(body, &info)
 }
 
-func fetchFacebookUserInfo(accessToken string) (map[string]interface{}, error) {
-	resp, err := http.Get("https://graph.facebook.com/me?fields=id,name,email&access_token=" + accessToken)
+func fetchGitHubUserInfo(accessToken string) (map[string]interface{}, error) {
+	req, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, err
 	}

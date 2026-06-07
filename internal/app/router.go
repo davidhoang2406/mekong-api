@@ -31,8 +31,8 @@ func (a *App) SetupRouter() *gin.Engine {
 		v1.POST("/auth/login", a.Login)
 		v1.GET("/auth/google", a.GoogleLogin)
 		v1.GET("/auth/google/callback", a.GoogleCallback)
-		v1.GET("/auth/facebook", a.FacebookLogin)
-		v1.GET("/auth/facebook/callback", a.FacebookCallback)
+		v1.GET("/auth/github", a.GitHubLogin)
+		v1.GET("/auth/github/callback", a.GitHubCallback)
 
 		// Protected routes
 		auth := v1.Group("/")

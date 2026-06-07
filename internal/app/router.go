@@ -25,6 +25,24 @@ func (a *App) SetupRouter() *gin.Engine {
 		v1.GET("/digest/live", a.GetDigestLive)
 		v1.GET("/screener", a.GetScreener)
 		v1.GET("/snapshot", a.GetSnapshot)
+
+		// Auth (public)
+		v1.POST("/auth/register", a.Register)
+		v1.POST("/auth/login", a.Login)
+
+		// Protected routes
+		auth := v1.Group("/")
+		auth.Use(middleware.JWTAuth(a.Cfg.JWTSecret))
+		{
+			auth.GET("/users/me", a.Me)
+			auth.POST("/users/me/keys", a.CreateAPIKey)
+			auth.GET("/users/me/keys", a.ListAPIKeys)
+
+			auth.GET("/watchlists", a.ListWatchlists)
+			auth.POST("/watchlists", a.CreateWatchlist)
+			auth.PUT("/watchlists/:id", a.UpdateWatchlist)
+			auth.DELETE("/watchlists/:id", a.DeleteWatchlist)
+		}
 	}
 
 	return r

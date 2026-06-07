@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/davidhoang2406/mekong-api/internal/model"
 	"github.com/davidhoang2406/mekong-api/internal/store"
@@ -400,4 +402,152 @@ func (a *App) GetSnapshot(c *gin.Context) {
 
 func abortError(c *gin.Context, status int, msg, code string) {
 	c.AbortWithStatusJSON(status, gin.H{"error": msg, "code": code, "status": status})
+}
+
+// --- Auth ---
+
+func (a *App) Register(c *gin.Context) {
+	var body struct {
+		Email    string `json:"email" binding:"required,email"`
+		Name     string `json:"name"  binding:"required"`
+		Password string `json:"password" binding:"required,min=8"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		abortError(c, http.StatusBadRequest, err.Error(), "INVALID_BODY")
+		return
+	}
+	user, err := store.CreateUser(c.Request.Context(), a.PG, body.Email, body.Name, body.Password)
+	if err != nil {
+		abortError(c, http.StatusConflict, "email already registered", "CONFLICT")
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"user": user})
+}
+
+func (a *App) Login(c *gin.Context) {
+	var body struct {
+		Email    string `json:"email"    binding:"required,email"`
+		Password string `json:"password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		abortError(c, http.StatusBadRequest, err.Error(), "INVALID_BODY")
+		return
+	}
+	user, hash, err := store.GetUserByEmail(c.Request.Context(), a.PG, body.Email)
+	if err != nil || bcrypt.CompareHashAndPassword([]byte(hash), []byte(body.Password)) != nil {
+		abortError(c, http.StatusUnauthorized, "invalid credentials", "UNAUTHORIZED")
+		return
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":   user.ID,
+		"email": user.Email,
+		"exp":   time.Now().Add(time.Duration(a.Cfg.JWTExpiryHours) * time.Hour).Unix(),
+		"iat":   time.Now().Unix(),
+	})
+	signed, err := token.SignedString([]byte(a.Cfg.JWTSecret))
+	if err != nil {
+		abortError(c, http.StatusInternalServerError, "token signing failed", "INTERNAL_ERROR")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"token": signed, "user": user})
+}
+
+func (a *App) Me(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	user, err := store.GetUserByID(c.Request.Context(), a.PG, fmt.Sprintf("%v", userID))
+	if err != nil {
+		abortError(c, http.StatusNotFound, "user not found", "NOT_FOUND")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"user": user})
+}
+
+// --- API Keys ---
+
+func (a *App) CreateAPIKey(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	var body struct {
+		Label string `json:"label"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	if body.Label == "" {
+		body.Label = "default"
+	}
+	key, rawKey, err := store.CreateAPIKey(c.Request.Context(), a.PG, fmt.Sprintf("%v", userID), body.Label)
+	if err != nil {
+		abortError(c, http.StatusInternalServerError, err.Error(), "INTERNAL_ERROR")
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"key": key, "raw_key": rawKey, "note": "Save this key — it will not be shown again"})
+}
+
+func (a *App) ListAPIKeys(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	keys, err := store.ListAPIKeys(c.Request.Context(), a.PG, fmt.Sprintf("%v", userID))
+	if err != nil {
+		abortError(c, http.StatusInternalServerError, err.Error(), "INTERNAL_ERROR")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"keys": keys})
+}
+
+// --- Watchlists ---
+
+func (a *App) ListWatchlists(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	lists, err := store.ListWatchlists(c.Request.Context(), a.PG, fmt.Sprintf("%v", userID))
+	if err != nil {
+		abortError(c, http.StatusInternalServerError, err.Error(), "INTERNAL_ERROR")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"watchlists": lists})
+}
+
+func (a *App) CreateWatchlist(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	var body struct {
+		Name    string   `json:"name"    binding:"required"`
+		Symbols []string `json:"symbols"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		abortError(c, http.StatusBadRequest, err.Error(), "INVALID_BODY")
+		return
+	}
+	if body.Symbols == nil {
+		body.Symbols = []string{}
+	}
+	w, err := store.CreateWatchlist(c.Request.Context(), a.PG, fmt.Sprintf("%v", userID), body.Name, body.Symbols)
+	if err != nil {
+		abortError(c, http.StatusConflict, "watchlist name already exists", "CONFLICT")
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"watchlist": w})
+}
+
+func (a *App) UpdateWatchlist(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	id := c.Param("id")
+	var body struct {
+		Symbols []string `json:"symbols" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		abortError(c, http.StatusBadRequest, err.Error(), "INVALID_BODY")
+		return
+	}
+	w, err := store.UpdateWatchlist(c.Request.Context(), a.PG, id, fmt.Sprintf("%v", userID), body.Symbols)
+	if err != nil {
+		abortError(c, http.StatusNotFound, "watchlist not found", "NOT_FOUND")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"watchlist": w})
+}
+
+func (a *App) DeleteWatchlist(c *gin.Context) {
+	userID, _ := c.Get("user_id")
+	id := c.Param("id")
+	if err := store.DeleteWatchlist(c.Request.Context(), a.PG, id, fmt.Sprintf("%v", userID)); err != nil {
+		abortError(c, http.StatusNotFound, "watchlist not found", "NOT_FOUND")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"deleted": id})
 }

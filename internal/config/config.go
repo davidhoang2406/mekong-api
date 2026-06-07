@@ -7,25 +7,25 @@ import (
 )
 
 type Config struct {
-	Port                string
-	GinMode             string
-	MinioEndpoint       string
-	MinioAccessKey      string
-	MinioSecretKey      string
-	MinioAnalysisBucket string
-	PostgresURL         string
-	PostgresMaxConns    int
-	CacheTTLSeconds     int
-	SnapshotCacheURL    string
-	WSInternalURL       string
-	LogLevel            string
-	JWTSecret           string
-	JWTExpiryHours      int
-	GoogleClientID      string
-	GoogleClientSecret  string
-	FacebookClientID    string
+	Port                 string
+	GinMode              string
+	MinioEndpoint        string
+	MinioAccessKey       string
+	MinioSecretKey       string
+	MinioAnalysisBucket  string
+	PostgresURL          string
+	PostgresMaxConns     int
+	CacheTTLSeconds      int
+	SnapshotCacheURL     string
+	WSInternalURL        string
+	LogLevel             string
+	JWTSecret            string
+	JWTExpiryHours       int
+	GoogleClientID       string
+	GoogleClientSecret   string
+	FacebookClientID     string
 	FacebookClientSecret string
-	OAuthRedirectBase   string
+	OAuthRedirectBase    string
 }
 
 func Load() (Config, error) {
@@ -44,18 +44,18 @@ func Load() (Config, error) {
 	}
 
 	return Config{
-		Port:                getEnv("PORT", "8090"),
-		GinMode:             getEnv("GIN_MODE", "release"),
-		MinioEndpoint:       getEnv("MINIO_ENDPOINT", "minio:9000"),
-		MinioAccessKey:      getEnv("MINIO_ACCESS_KEY", "minioadmin"),
-		MinioSecretKey:      getEnv("MINIO_SECRET_KEY", "minioadmin"),
-		MinioAnalysisBucket: getEnv("MINIO_ANALYSIS_BUCKET", "market-analysis"),
-		PostgresURL:         getEnv("POSTGRES_URL", "postgres://mekong:mekong@postgres:5432/mekong_api?sslmode=disable"),
-		PostgresMaxConns:    maxConns,
-		CacheTTLSeconds:     cacheTTL,
-		SnapshotCacheURL:    getEnv("SNAPSHOT_CACHE_URL", ""),
-		WSInternalURL:       getEnv("WS_INTERNAL_URL", ""),
-		LogLevel:            getEnv("LOG_LEVEL", "info"),
+		Port:                 getEnv("PORT", "8090"),
+		GinMode:              getEnv("GIN_MODE", "release"),
+		MinioEndpoint:        getEnv("MINIO_ENDPOINT", "minio:9000"),
+		MinioAccessKey:       getEnv("MINIO_ACCESS_KEY", "minioadmin"),
+		MinioSecretKey:       getEnv("MINIO_SECRET_KEY", "minioadmin"),
+		MinioAnalysisBucket:  getEnv("MINIO_ANALYSIS_BUCKET", "market-analysis"),
+		PostgresURL:          getEnv("POSTGRES_URL", "postgres://mekong:mekong@postgres:5432/mekong_api?sslmode=disable"),
+		PostgresMaxConns:     maxConns,
+		CacheTTLSeconds:      cacheTTL,
+		SnapshotCacheURL:     getEnv("SNAPSHOT_CACHE_URL", ""),
+		WSInternalURL:        getEnv("WS_INTERNAL_URL", ""),
+		LogLevel:             getEnv("LOG_LEVEL", "info"),
 		JWTSecret:            getEnv("JWT_SECRET", "change-me-in-production"),
 		JWTExpiryHours:       jwtExpiry,
 		GoogleClientID:       getEnv("GOOGLE_CLIENT_ID", ""),

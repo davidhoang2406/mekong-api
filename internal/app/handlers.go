@@ -335,16 +335,27 @@ func rankLiveCategory(ticks []model.PriceSnapshot, category string, topN int) []
 // @Summary     Weekly fundamental screener
 // @Tags        market-data
 // @Produce     json
-// @Param       year query string false "Year (default: current)"
-// @Param       week query string false "ISO week number (default: current)"
+// @Param       year query string false "Year — omit to use the latest available"
+// @Param       week query string false "ISO week number — omit to use the latest available"
 // @Success     200 {object} model.ScreenerResponse
 // @Failure     404 {object} map[string]interface{}
 // @Router      /screener [get]
 func (a *App) GetScreener(c *gin.Context) {
-	now := time.Now()
-	_, isoWeek := now.ISOWeek()
-	year := c.DefaultQuery("year", now.Format("2006"))
-	week := c.DefaultQuery("week", fmt.Sprintf("%02d", isoWeek))
+	year := c.Query("year")
+	week := c.Query("week")
+
+	if year == "" || week == "" {
+		var err error
+		year, week, err = store.LatestScreenerWeek(c.Request.Context(), a.PG)
+		if err != nil {
+			abortError(c, http.StatusInternalServerError, err.Error(), "QUERY_ERROR")
+			return
+		}
+		if year == "" {
+			abortError(c, http.StatusNotFound, "no screener data available", "NOT_FOUND")
+			return
+		}
+	}
 
 	results, err := store.QueryScreenerPG(c.Request.Context(), a.PG, year, week)
 	if err != nil {

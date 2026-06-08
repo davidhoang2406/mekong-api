@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidhoang2406/mekong-api/internal/model"
@@ -130,6 +132,22 @@ func QueryDigestPG(ctx context.Context, pool *pgxpool.Pool, date, category strin
 		out = append(out, e)
 	}
 	return out, rows.Err()
+}
+
+// LatestScreenerWeek returns the most recent (year, week) with data, or ("", "") if empty.
+func LatestScreenerWeek(ctx context.Context, pool *pgxpool.Pool) (string, string, error) {
+	var year, week string
+	err := pool.QueryRow(ctx, `
+		SELECT year, week FROM screener_results
+		ORDER BY year DESC, week DESC LIMIT 1
+	`).Scan(&year, &week)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", "", nil
+		}
+		return "", "", fmt.Errorf("latest screener week: %w", err)
+	}
+	return year, week, nil
 }
 
 func QueryScreenerPG(ctx context.Context, pool *pgxpool.Pool, year, week string) ([]model.ScreenerResult, error) {

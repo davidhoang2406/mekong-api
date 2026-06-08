@@ -190,7 +190,7 @@ func QueryScreener(db *sql.DB, bucket, year, week string) ([]model.ScreenerResul
 	path := parquetPath(bucket, "screener")
 	query := fmt.Sprintf(`
 		SELECT symbol,
-		       pe_ratio::DOUBLE, pb_ratio::DOUBLE, roe::DOUBLE, eps::DOUBLE,
+		       pe_ratio::DOUBLE, pb_ratio::DOUBLE, roe::DOUBLE,
 		       de_ratio::DOUBLE, current_ratio::DOUBLE
 		FROM read_parquet('%s', hive_partitioning=true)
 		WHERE year = $1 AND week = $2
@@ -199,7 +199,7 @@ func QueryScreener(db *sql.DB, bucket, year, week string) ([]model.ScreenerResul
 
 	out, err := queryAll(db, query, func(r *sql.Rows, s *model.ScreenerResult) error {
 		return r.Scan(
-			&s.Symbol, &s.PERatio, &s.PBRatio, &s.ROE, &s.EPS, &s.DERatio, &s.CurrentRatio,
+			&s.Symbol, &s.PERatio, &s.PBRatio, &s.ROE, &s.DERatio, &s.CurrentRatio,
 		)
 	}, year, week)
 	if err != nil {

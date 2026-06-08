@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/davidhoang2406/mekong-api/internal/model"
@@ -132,9 +134,25 @@ func QueryDigestPG(ctx context.Context, pool *pgxpool.Pool, date, category strin
 	return out, rows.Err()
 }
 
+// LatestScreenerWeek returns the most recent (year, week) with data, or ("", "") if empty.
+func LatestScreenerWeek(ctx context.Context, pool *pgxpool.Pool) (string, string, error) {
+	var year, week string
+	err := pool.QueryRow(ctx, `
+		SELECT year, week FROM screener_results
+		ORDER BY year DESC, week DESC LIMIT 1
+	`).Scan(&year, &week)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", "", nil
+		}
+		return "", "", fmt.Errorf("latest screener week: %w", err)
+	}
+	return year, week, nil
+}
+
 func QueryScreenerPG(ctx context.Context, pool *pgxpool.Pool, year, week string) ([]model.ScreenerResult, error) {
 	rows, err := pool.Query(ctx, `
-		SELECT symbol, pe_ratio, pb_ratio, roe, eps, de_ratio, current_ratio
+		SELECT symbol, pe_ratio, pb_ratio, roe, de_ratio, current_ratio
 		FROM screener_results
 		WHERE year = $1 AND week = $2
 		ORDER BY pe_ratio NULLS LAST
@@ -148,7 +166,7 @@ func QueryScreenerPG(ctx context.Context, pool *pgxpool.Pool, year, week string)
 	for rows.Next() {
 		var s model.ScreenerResult
 		if err := rows.Scan(
-			&s.Symbol, &s.PERatio, &s.PBRatio, &s.ROE, &s.EPS, &s.DERatio, &s.CurrentRatio,
+			&s.Symbol, &s.PERatio, &s.PBRatio, &s.ROE, &s.DERatio, &s.CurrentRatio,
 		); err != nil {
 			return nil, err
 		}
